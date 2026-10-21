@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>404 — Link não encontrado | LinkCurto</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;700;900&display=swap" rel="stylesheet" />
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: 'Inter', sans-serif;
+      background: #0a0a0f;
+      color: #f1f0fa;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      text-align: center;
+      padding: 20px;
+    }
+    .emoji { font-size: 5rem; margin-bottom: 20px; animation: float 3s ease-in-out infinite; }
+    @keyframes float { 0%,100%{transform:translateY(0)} 50%{transform:translateY(-10px)} }
+    h1 { font-size: 5rem; font-weight: 900; background: linear-gradient(135deg,#7c3aed,#ec4899); -webkit-background-clip:text; -webkit-text-fill-color:transparent; background-clip:text; }
+    p { margin-top: 12px; color: #9190a8; font-size: 1.1rem; }
+    a { display: inline-block; margin-top: 28px; padding: 14px 32px; background: linear-gradient(135deg,#7c3aed,#a855f7); color:#fff; text-decoration:none; border-radius:12px; font-weight:700; font-size:0.95rem; transition: all 0.2s ease; }
+    a:hover { transform:translateY(-2px); box-shadow:0 8px 24px rgba(124,58,237,0.4); }
+  </style>
+</head>
+<body>
+  <div class="emoji">🔍</div>
+  <h1>404</h1>
+  <p>Esse link curto não existe ou foi removido.</p>
+  <a href="/">← Voltar ao início</a>
+</body>
+</html>

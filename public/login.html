@@ -1,0 +1,273 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Login e Cadastro — LinkCurto</title>
+  <meta name="description" content="Faça login ou crie sua conta no LinkCurto para gerenciar seus links encurtados com planos e analytics." />
+  <!-- PWA -->
+  <link rel="manifest" href="/manifest.json" />
+  <meta name="theme-color" content="#7c3aed" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-title" content="LinkCurto" />
+  <link rel="apple-touch-icon" href="/icon-192.jpg" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="style.css?v=3" />
+  <style>
+    [hidden] { display: none !important; }
+
+    .login-body {
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 24px;
+    }
+
+    .login-card {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-xl);
+      padding: 38px 36px 32px;
+      width: 100%;
+      max-width: 430px;
+      box-shadow: var(--shadow-card), var(--shadow-glow);
+      animation: slideUpFade 0.35s cubic-bezier(0.34, 1.56, 0.64, 1);
+    }
+
+    @keyframes slideUpFade {
+      from { opacity: 0; transform: translateY(24px) scale(0.97); }
+      to   { opacity: 1; transform: translateY(0) scale(1); }
+    }
+
+    .login-logo {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 22px;
+      justify-content: center;
+    }
+
+    .auth-tabs {
+      display: flex;
+      background: rgba(255, 255, 255, 0.04);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      border-radius: var(--radius-md);
+      padding: 4px;
+      margin-bottom: 24px;
+      gap: 4px;
+    }
+
+    .auth-tab-btn {
+      flex: 1;
+      padding: 10px;
+      border-radius: var(--radius-sm);
+      background: transparent;
+      border: none;
+      color: var(--text-secondary);
+      font-family: var(--font);
+      font-size: 0.88rem;
+      font-weight: 700;
+      cursor: pointer;
+      transition: all var(--transition);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+    }
+
+    .auth-tab-btn.active {
+      background: linear-gradient(135deg, #7c3aed, #a855f7);
+      color: #fff;
+      box-shadow: 0 4px 14px rgba(124, 58, 237, 0.35);
+    }
+
+    .login-title {
+      font-size: 1.45rem;
+      font-weight: 800;
+      color: var(--text-primary);
+      text-align: center;
+      letter-spacing: -0.5px;
+      margin-bottom: 6px;
+    }
+
+    .login-subtitle {
+      color: var(--text-secondary);
+      font-size: 0.86rem;
+      text-align: center;
+      margin-bottom: 26px;
+      line-height: 1.4;
+    }
+
+    .login-form .form-group {
+      margin-bottom: 18px;
+    }
+
+    .input-pass-wrapper {
+      position: relative;
+    }
+
+    .input-pass-wrapper .form-input {
+      padding-right: 44px;
+    }
+
+    .toggle-pass {
+      position: absolute;
+      right: 14px;
+      top: 50%;
+      transform: translateY(-50%);
+      cursor: pointer;
+      font-size: 1rem;
+      user-select: none;
+      opacity: 0.7;
+      transition: opacity 0.2s;
+      line-height: 1;
+    }
+
+    .toggle-pass:hover { opacity: 1; }
+
+    .auth-switch-link {
+      display: block;
+      text-align: center;
+      margin-top: 18px;
+      font-size: 0.82rem;
+      color: var(--text-secondary);
+    }
+
+    .auth-switch-link a {
+      color: #c4b5fd;
+      font-weight: 700;
+      text-decoration: none;
+      cursor: pointer;
+    }
+
+    .auth-switch-link a:hover {
+      text-decoration: underline;
+      color: #fff;
+    }
+
+    .login-hint {
+      margin-top: 22px;
+      text-align: center;
+      color: var(--text-muted);
+      font-size: 0.78rem;
+      line-height: 1.6;
+      border-top: 1px solid rgba(255, 255, 255, 0.06);
+      padding-top: 16px;
+    }
+
+    .login-hint code {
+      background: rgba(255,255,255,0.07);
+      padding: 1px 6px;
+      border-radius: 4px;
+      color: var(--accent-3);
+      font-size: 0.78rem;
+    }
+  </style>
+</head>
+<body class="login-body">
+  <div class="bg-orbs">
+    <div class="orb orb-1"></div>
+    <div class="orb orb-2"></div>
+    <div class="orb orb-3"></div>
+  </div>
+
+  <main>
+    <div class="login-card">
+      <div class="login-logo">
+        <span class="logo-icon">🔗</span>
+        <span class="logo-text">Link<span class="logo-accent">Curto</span></span>
+      </div>
+
+      <!-- Tabs Entrar / Cadastrar -->
+      <div class="auth-tabs">
+        <button class="auth-tab-btn active" id="tab-login" type="button">
+          <span>🔑</span> Entrar
+        </button>
+        <button class="auth-tab-btn" id="tab-register" type="button">
+          <span>✨</span> Criar Conta
+        </button>
+      </div>
+
+      <h1 class="login-title" id="auth-title">Bem-vindo de volta</h1>
+      <p class="login-subtitle" id="auth-subtitle">Entre na sua conta para gerenciar seus links</p>
+
+      <div class="login-form">
+        <div class="form-group">
+          <label for="login-user" class="form-label">
+            <span class="label-icon">👤</span> Usuário
+          </label>
+          <input
+            type="text"
+            id="login-user"
+            class="form-input"
+            placeholder="Seu usuário"
+            autocomplete="username"
+            autofocus
+          />
+        </div>
+
+        <div class="form-group">
+          <label for="login-pass" class="form-label">
+            <span class="label-icon">🔑</span> Senha
+          </label>
+          <div class="input-pass-wrapper">
+            <input
+              type="password"
+              id="login-pass"
+              class="form-input"
+              placeholder="••••••••"
+              autocomplete="current-password"
+            />
+            <span class="toggle-pass" id="toggle-pass" title="Mostrar/ocultar senha" role="button" aria-label="Mostrar senha">👁️</span>
+          </div>
+        </div>
+
+        <!-- Confirmação de senha (apenas no modo cadastro) -->
+        <div class="form-group" id="confirm-pass-group" hidden>
+          <label for="login-pass-confirm" class="form-label">
+            <span class="label-icon">🔒</span> Confirmar Senha
+          </label>
+          <div class="input-pass-wrapper">
+            <input
+              type="password"
+              id="login-pass-confirm"
+              class="form-input"
+              placeholder="Digite a senha novamente"
+              autocomplete="new-password"
+            />
+          </div>
+        </div>
+
+        <div class="alert alert-error" id="login-error" hidden>
+          <span class="alert-icon">⚠️</span>
+          <span id="login-error-text"></span>
+        </div>
+
+        <button class="btn-shorten" id="login-btn" style="width:100%;margin-top:6px;" aria-label="Entrar">
+          <span class="btn-text" id="btn-submit-text">Entrar</span>
+          <span class="btn-loader" hidden><span class="spinner"></span></span>
+          <span class="btn-icon" id="btn-submit-icon" aria-hidden="true">→</span>
+        </button>
+
+        <p class="auth-switch-link" id="switch-link-wrap">
+          Ainda não tem conta? <a id="switch-mode-btn">Criar conta grátis</a>
+        </p>
+      </div>
+
+      <p class="login-hint" id="login-hint">
+        Credenciais do administrador: <code>admin</code> / <code>admin123</code>
+      </p>
+    </div>
+  </main>
+
+  <script src="login.js?v=3"></script>
+  <script>
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.register('/sw.js?v=3').catch(function(e) { console.warn('SW:', e); });
+    }
+  </script>
+</body>
+</html>

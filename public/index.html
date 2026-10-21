@@ -1,0 +1,484 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>LinkCurto — Encurtador de URLs</title>
+  <meta name="description" content="Encurte suas URLs longas em segundos com o LinkCurto. Simples, rápido e com histórico completo." />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="style.css?v=3" />
+  <!-- PWA -->
+  <link rel="manifest" href="/manifest.json" />
+  <meta name="theme-color" content="#7c3aed" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="LinkCurto" />
+  <link rel="apple-touch-icon" href="/icon-192.jpg" />
+</head>
+<body>
+  <!-- Background particles -->
+  <div class="bg-orbs">
+    <div class="orb orb-1"></div>
+    <div class="orb orb-2"></div>
+    <div class="orb orb-3"></div>
+  </div>
+
+  <!-- Header -->
+  <header class="header">
+    <div class="container header-container">
+      <div class="logo">
+        <span class="logo-icon">🔗</span>
+        <span class="logo-text">Link<span class="logo-accent">Curto</span></span>
+      </div>
+      <div class="header-right">
+        <button class="plan-badge-btn" id="plan-badge-btn" title="Ver detalhes do plano">
+          <span class="plan-crown" id="plan-crown">⚡</span>
+          <span class="plan-name" id="header-plan-name">Plano Free</span>
+        </button>
+        <button class="btn-plans" id="open-plans-btn" title="Comparar planos e preços">
+          💎 Planos & Preços
+        </button>
+        <span class="header-user" id="header-user">👤</span>
+        <button class="btn-logout" id="logout-btn" title="Sair">Sair →</button>
+      </div>
+    </div>
+  </header>
+
+  <!-- Main Content -->
+  <main class="main">
+    <div class="container">
+
+      <!-- Hero Section -->
+      <section class="hero" aria-labelledby="hero-title">
+        <h1 id="hero-title" class="hero-title">
+          Transforme links longos em<br />
+          <span class="gradient-text">links poderosos</span>
+        </h1>
+        <p class="hero-subtitle">Cole sua URL, personalize o slug e compartilhe em segundos.</p>
+        
+        <!-- Quota Banner -->
+        <div class="quota-banner" id="quota-banner">
+          <div class="quota-info">
+            <span class="quota-icon" id="quota-icon">⚡</span>
+            <span class="quota-text" id="quota-text">Carregando plano…</span>
+          </div>
+          <button class="quota-upgrade-btn" id="quota-upgrade-btn">Fazer Upgrade →</button>
+        </div>
+      </section>
+
+      <!-- Shorten Form Card -->
+      <section class="card shorten-card" aria-label="Formulário de encurtamento">
+        <div class="card-inner">
+          <div class="form-group" id="url-group">
+            <label for="original-url" class="form-label">
+              <span class="label-icon">🌐</span> URL longa
+            </label>
+            <div class="input-wrapper">
+              <input
+                type="url"
+                id="original-url"
+                class="form-input"
+                placeholder="https://exemplo.com/pagina/muito/longa/aqui"
+                autocomplete="off"
+                spellcheck="false"
+                aria-required="true"
+              />
+              <span class="input-clear" id="clear-url" title="Limpar" aria-label="Limpar URL">✕</span>
+            </div>
+          </div>
+
+          <div class="form-group" id="slug-group">
+            <div class="label-with-tag">
+              <label for="custom-slug" class="form-label">
+                <span class="label-icon">✏️</span> Slug personalizado
+                <span class="label-optional">(opcional)</span>
+              </label>
+              <span class="plan-tag plan-tag-pro" title="Disponível no Plano Pro e Master">PRO</span>
+            </div>
+            <div class="slug-input-wrapper">
+              <span class="slug-prefix" aria-hidden="true">localhost:5000/</span>
+              <input
+                type="text"
+                id="custom-slug"
+                class="form-input slug-input"
+                placeholder="meu-link"
+                maxlength="50"
+                autocomplete="off"
+                spellcheck="false"
+                aria-describedby="slug-hint"
+              />
+            </div>
+            <span id="slug-hint" class="form-hint">Letras, números, - e _ (3–50 caracteres)</span>
+          </div>
+
+          <!-- Advanced Options Toggle -->
+          <button
+            type="button"
+            class="btn-advanced"
+            id="advanced-toggle"
+            aria-expanded="false"
+            aria-controls="advanced-panel"
+          >
+            <div class="advanced-btn-left">
+              <span class="advanced-icon">⚙️</span>
+              <span>Opções avançadas</span>
+              <span class="plan-tag plan-tag-master" title="Exclusivo Plano Master">MASTER</span>
+            </div>
+            <span class="toggle-arrow" id="advanced-arrow">▼</span>
+          </button>
+
+          <!-- Advanced Options Panel -->
+          <div class="advanced-panel" id="advanced-panel" hidden>
+            <div class="advanced-grid">
+              <div class="form-group">
+                <label for="expires-at" class="form-label">
+                  <span class="label-icon">⏰</span> Expirar em
+                  <span class="label-optional">(opcional)</span>
+                </label>
+                <input
+                  type="datetime-local"
+                  id="expires-at"
+                  class="form-input"
+                />
+              </div>
+              <div class="form-group">
+                <label for="max-clicks" class="form-label">
+                  <span class="label-icon">👆</span> Máx. de cliques
+                  <span class="label-optional">(opcional)</span>
+                </label>
+                <input
+                  type="number"
+                  id="max-clicks"
+                  class="form-input"
+                  placeholder="Ex: 100"
+                  min="1"
+                />
+              </div>
+            </div>
+          </div>
+
+          <!-- Error Message -->
+          <div class="alert alert-error" id="error-msg" role="alert" aria-live="polite" hidden>
+            <span class="alert-icon">⚠️</span>
+            <span id="error-text"></span>
+          </div>
+
+          <button class="btn-shorten" id="shorten-btn" aria-label="Encurtar URL">
+            <span class="btn-text">Encurtar Link</span>
+            <span class="btn-loader" hidden>
+              <span class="spinner"></span>
+            </span>
+            <span class="btn-icon" aria-hidden="true">→</span>
+          </button>
+        </div>
+
+        <!-- Result Box -->
+        <div class="result-box" id="result-box" hidden aria-live="polite">
+          <div class="result-header">
+            <span class="result-badge">✅ Link criado!</span>
+          </div>
+          <div class="result-content">
+            <a class="result-link" id="result-link" href="#" target="_blank" rel="noopener noreferrer"></a>
+            <div class="result-btn-group">
+              <button class="btn-copy" id="copy-btn" aria-label="Copiar link curto">
+                <span class="copy-icon">📋</span>
+                <span class="copy-text">Copiar</span>
+              </button>
+              <button class="btn-qr-result" id="qr-result-btn" aria-label="Ver QR Code">
+                <span>📷</span>
+                <span>QR Code</span>
+              </button>
+            </div>
+          </div>
+          <p class="result-original" id="result-original"></p>
+        </div>
+      </section>
+
+      <!-- Stats Bar -->
+      <div class="stats-bar" id="stats-bar">
+        <div class="stat-item">
+          <span class="stat-value" id="stat-total">0</span>
+          <span class="stat-label">Links criados</span>
+        </div>
+        <div class="stat-divider" aria-hidden="true"></div>
+        <div class="stat-item">
+          <span class="stat-value" id="stat-clicks">0</span>
+          <span class="stat-label">Cliques totais</span>
+        </div>
+      </div>
+
+      <!-- Links Table -->
+      <section class="card links-card" aria-labelledby="links-title">
+        <div class="links-header">
+          <h2 id="links-title" class="links-title">
+            <span>📊</span> Seus links
+          </h2>
+          <button class="btn-refresh" id="refresh-btn" aria-label="Atualizar lista de links" title="Atualizar">
+            <span class="refresh-icon">↻</span>
+          </button>
+          <button class="btn-export" id="export-btn" title="Exportar CSV" aria-label="Exportar links como CSV">
+            ⬇️ CSV
+          </button>
+        </div>
+
+        <!-- Empty state -->
+        <div class="empty-state" id="empty-state" hidden>
+          <div class="empty-icon">🔗</div>
+          <p class="empty-title">Nenhum link ainda</p>
+          <p class="empty-subtitle">Crie seu primeiro link encurtado acima!</p>
+        </div>
+
+        <!-- Loading state -->
+        <div class="loading-state" id="loading-state">
+          <div class="loading-dots">
+            <span></span><span></span><span></span>
+          </div>
+        </div>
+
+        <!-- Table -->
+        <div class="table-wrapper" id="table-wrapper" hidden>
+          <table class="links-table" id="links-table" aria-label="Lista de links encurtados">
+            <thead>
+              <tr>
+                <th scope="col">Link Curto</th>
+                <th scope="col">URL Original</th>
+                <th scope="col">Cliques</th>
+                <th scope="col">Criado em</th>
+                <th scope="col">Ações</th>
+              </tr>
+            </thead>
+            <tbody id="links-tbody"></tbody>
+          </table>
+        </div>
+      </section>
+    </div>
+  </main>
+
+  <!-- Toast Notification -->
+  <div class="toast" id="toast" role="status" aria-live="polite" aria-atomic="true"></div>
+
+  <!-- Analytics Modal -->
+  <div class="modal-overlay" id="analytics-modal" role="dialog" aria-modal="true" aria-labelledby="analytics-title" hidden>
+    <div class="modal modal-analytics">
+      <div class="modal-header">
+        <h3 id="analytics-title" class="modal-title-alt">📊 Analytics — últimos 30 dias</h3>
+        <button class="modal-close" id="analytics-close" aria-label="Fechar analytics">✕</button>
+      </div>
+      <div class="analytics-meta" id="analytics-meta"></div>
+      <div class="analytics-stats-wrap" id="analytics-stats"></div>
+      <div class="chart-container">
+        <canvas id="analytics-chart"></canvas>
+      </div>
+    </div>
+  </div>
+
+  <!-- QR Code Modal -->
+  <div class="modal-overlay" id="qr-modal" role="dialog" aria-modal="true" aria-labelledby="qr-title" hidden>
+    <div class="modal modal-qr">
+      <div class="modal-header">
+        <h3 id="qr-title" class="modal-title-alt">📷 QR Code</h3>
+        <button class="modal-close" id="qr-close" aria-label="Fechar QR code">✕</button>
+      </div>
+      <div class="qr-content">
+        <div class="qr-image-wrap">
+          <img id="qr-image" src="" alt="QR Code do link curto" class="qr-image" />
+        </div>
+        <p class="qr-url" id="qr-url"></p>
+        <div class="modal-actions">
+          <button class="btn-modal-cancel" id="qr-copy-btn">📋 Copiar URL</button>
+          <a class="btn-modal-confirm qr-download" id="qr-download" href="#" download>⬇️ Baixar PNG</a>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Delete Confirmation Modal -->
+  <div class="modal-overlay" id="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="modal-title" hidden>
+    <div class="modal">
+      <div class="modal-icon">🗑️</div>
+      <h3 id="modal-title" class="modal-title">Excluir link?</h3>
+      <p class="modal-subtitle">Esta ação não pode ser desfeita.</p>
+      <div class="modal-actions">
+        <button class="btn-modal-cancel" id="modal-cancel">Cancelar</button>
+        <button class="btn-modal-confirm" id="modal-confirm">Excluir</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============================================
+       PRICING MODAL (Banners de Preços)
+       ============================================ -->
+  <div class="modal-overlay" id="pricing-modal" role="dialog" aria-modal="true" aria-labelledby="pricing-title" hidden>
+    <div class="modal modal-pricing">
+      <div class="modal-header">
+        <div>
+          <h3 id="pricing-title" class="pricing-headline">Planos de Acesso — LinkCurto</h3>
+          <p class="pricing-subheadline">Escolha o plano ideal para suas necessidades. Ativação imediata!</p>
+        </div>
+        <button class="modal-close" id="pricing-close" aria-label="Fechar planos">✕</button>
+      </div>
+
+      <div class="pricing-grid">
+        <!-- PLAN 1: FREE -->
+        <div class="pricing-card card-free" id="card-free">
+          <div class="pricing-badge">Iniciante</div>
+          <h4 class="plan-card-title">Free</h4>
+          <p class="plan-card-desc">Ideal para testar o encurtador e links pontuais.</p>
+          <div class="plan-price">
+            <span class="price-currency">R$</span>
+            <span class="price-val">0</span>
+            <span class="price-period">/ grátis</span>
+          </div>
+          <ul class="plan-features">
+            <li class="feat-included"><span>✅</span> <strong>1 link ativo</strong> no total</li>
+            <li class="feat-included"><span>✅</span> Até <strong>100 cliques</strong> no link</li>
+            <li class="feat-included"><span>✅</span> QR Code padrão</li>
+            <li class="feat-included"><span>✅</span> Contagem básica de cliques</li>
+            <li class="feat-excluded"><span>❌</span> Slug personalizado</li>
+            <li class="feat-excluded"><span>❌</span> Gráficos de 30 dias</li>
+            <li class="feat-excluded"><span>❌</span> Exportação para CSV</li>
+            <li class="feat-excluded"><span>❌</span> Data de expiração</li>
+            <li class="feat-excluded"><span>❌</span> Preview rica com OG Cards</li>
+          </ul>
+          <button class="btn-plan-action btn-plan-free" id="btn-select-free" data-plan="free">
+            Plano Atual
+          </button>
+        </div>
+
+        <!-- PLAN 2: PRO -->
+        <div class="pricing-card card-pro featured" id="card-pro">
+          <div class="pricing-badge badge-popular">Mais Popular 🔥</div>
+          <h4 class="plan-card-title">Pro</h4>
+          <p class="plan-card-desc">Para profissionais, lojas e criadores de conteúdo.</p>
+          <div class="plan-price">
+            <span class="price-currency">R$</span>
+            <span class="price-val">9,90</span>
+            <span class="price-period">/ mês</span>
+          </div>
+          <ul class="plan-features">
+            <li class="feat-included"><span>✅</span> Até <strong>25 links ativos</strong></li>
+            <li class="feat-included"><span>✅</span> Até <strong>5.000 cliques</strong> por link</li>
+            <li class="feat-included"><span>✅</span> <strong>Slug personalizado</strong> liberado</li>
+            <li class="feat-included"><span>✅</span> <strong>QR Code em alta + Download PNG</strong></li>
+            <li class="feat-included"><span>✅</span> <strong>Exportação completa para CSV</strong></li>
+            <li class="feat-included"><span>✅</span> <strong>Analytics detalhado (30 dias)</strong></li>
+            <li class="feat-excluded"><span>❌</span> Data de expiração</li>
+            <li class="feat-excluded"><span>❌</span> Preview rica com OG Cards</li>
+          </ul>
+          <button class="btn-plan-action btn-plan-pro" id="btn-select-pro" data-plan="pro">
+            Assinar Pro →
+          </button>
+        </div>
+
+        <!-- PLAN 3: MASTER VIP -->
+        <div class="pricing-card card-master vip" id="card-master">
+          <div class="pricing-badge badge-vip">Tudo Liberado 👑</div>
+          <h4 class="plan-card-title">Master VIP</h4>
+          <p class="plan-card-desc">Controle total, zero limites e recursos exclusivos.</p>
+          <div class="plan-price">
+            <span class="price-currency">R$</span>
+            <span class="price-val">19,90</span>
+            <span class="price-period">/ mês</span>
+          </div>
+          <ul class="plan-features">
+            <li class="feat-included"><span>✅</span> <strong>Links ILIMITADOS ♾️</strong></li>
+            <li class="feat-included"><span>✅</span> <strong>Cliques ILIMITADOS ♾️</strong></li>
+            <li class="feat-included"><span>✅</span> <strong>Slugs personalizados ilimitados</strong></li>
+            <li class="feat-included"><span>✅</span> <strong>Data e hora de expiração</strong></li>
+            <li class="feat-included"><span>✅</span> <strong>Limite manual de cliques</strong></li>
+            <li class="feat-included"><span>✅</span> <strong>Página de Preview rica com OG Cards</strong></li>
+            <li class="feat-included"><span>✅</span> <strong>QR Code Pro + Download PNG</strong></li>
+            <li class="feat-included"><span>✅</span> <strong>Exportação CSV ilimitada</strong></li>
+            <li class="feat-included"><span>✅</span> <strong>Selo VIP Master no sistema</strong></li>
+          </ul>
+          <button class="btn-plan-action btn-plan-master" id="btn-select-master" data-plan="master">
+            Virar Master VIP 🚀
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============================================
+       CHECKOUT / UPGRADE CONFIRMATION MODAL
+       ============================================ -->
+  <div class="modal-overlay" id="checkout-modal" role="dialog" aria-modal="true" aria-labelledby="checkout-title" hidden>
+    <div class="modal modal-checkout">
+      <div class="modal-header">
+        <h3 id="checkout-title" class="modal-title-alt">⚡ Ativação de Assinatura</h3>
+        <button class="modal-close" id="checkout-close" aria-label="Fechar checkout">✕</button>
+      </div>
+
+      <div class="checkout-summary" id="checkout-summary">
+        <div class="summary-plan-badge" id="checkout-plan-name">Plano Master VIP</div>
+        <div class="summary-price" id="checkout-plan-price">R$ 19,90 / mês</div>
+        <p class="summary-desc" id="checkout-plan-desc">Acesso instantâneo a todos os recursos.</p>
+      </div>
+
+      <!-- Payment method toggle -->
+      <div class="pay-methods">
+        <button class="pay-method-btn active" id="pay-pix-tab" data-method="pix">
+          <span>💠</span> Pix (Aprovação Instantânea)
+        </button>
+        <button class="pay-method-btn" id="pay-card-tab" data-method="card">
+          <span>💳</span> Cartão de Crédito
+        </button>
+      </div>
+
+      <!-- Pix Panel -->
+      <div class="pay-panel" id="panel-pix">
+        <div class="pix-box">
+          <div class="pix-qr-wrap">
+            <img src="https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=00020126580014br.gov.bcb.pix0136linkcurto-pagamentos-pix-instantaneo520400005303986540519.905802BR5915LinkCurto%20Ltda6009Sao%20Paulo62070503***6304E8A2" alt="QR Code Pix" class="pix-qr-img" />
+          </div>
+          <div class="pix-copy-wrap">
+            <span class="pix-code-text">00020126580014br.gov.bcb.pix0136linkcurto-pagamentos-pix-instantaneo520400005303986540519.905802BR</span>
+            <button class="btn-copy-pix" id="btn-copy-pix">Copiar Código Pix</button>
+          </div>
+        </div>
+        <p class="pay-note">Escaneie o QR Code no seu aplicativo do banco para ativação.</p>
+      </div>
+
+      <!-- Card Panel -->
+      <div class="pay-panel" id="panel-card" hidden>
+        <div class="card-form-grid">
+          <div class="form-group">
+            <label class="form-label">Número do Cartão</label>
+            <input type="text" class="form-input" placeholder="•••• •••• •••• 4242" value="4532 •••• •••• 8899" readonly />
+          </div>
+          <div class="card-form-row">
+            <div class="form-group">
+              <label class="form-label">Validade</label>
+              <input type="text" class="form-input" placeholder="MM/AA" value="12/29" readonly />
+            </div>
+            <div class="form-group">
+              <label class="form-label">CVV</label>
+              <input type="text" class="form-input" placeholder="123" value="•••" readonly />
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="checkout-actions">
+        <button class="btn-modal-cancel" id="checkout-cancel">Cancelar</button>
+        <button class="btn-confirm-upgrade" id="btn-confirm-upgrade">
+          <span>🚀 Confirmar Pagamento & Ativar</span>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+  <script src="app.js?v=3"></script>
+  <script>
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.getRegistrations().then(function(registrations) {
+        for (let r of registrations) { r.update(); }
+      });
+      navigator.serviceWorker.register('/sw.js?v=3').catch(function(e) { console.warn('SW:', e); });
+    }
+  </script>
+</body>
+</html>
