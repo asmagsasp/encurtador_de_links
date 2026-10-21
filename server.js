@@ -11,10 +11,19 @@ const db       = require('./db');
 
 const app = express();
 const PORT           = process.env.PORT || 5000;
-const BASE_URL       = process.env.BASE_URL || `http://localhost:${PORT}`;
 const ADMIN_USER     = process.env.ADMIN_USER || 'admin';
 const ADMIN_PASS     = process.env.ADMIN_PASS || 'admin123';
 const SESSION_SECRET = process.env.SESSION_SECRET || 'linkcurto-secret';
+
+function getBaseUrl(req) {
+  if (process.env.BASE_URL && process.env.BASE_URL.trim()) {
+    return process.env.BASE_URL.trim().replace(/\/$/, '');
+  }
+  if (!req) return `http://localhost:${PORT}`;
+  const proto = req.headers['x-forwarded-proto'] || req.protocol || 'http';
+  const host = req.headers['x-forwarded-host'] || req.get('host') || `localhost:${PORT}`;
+  return `${proto}://${host}`;
+}
 
 const RESERVED_SLUGS = new Set(['api', 'auth', 'login', 'logout', 'admin', 'static', 'public', 'sw.js', 'manifest.json', 'favicon.ico']);
 
@@ -416,8 +425,9 @@ function fetchOGData(targetUrl) {
   });
 }
 
-function buildPreviewHTML(link, ogData) {
-  const shortUrl  = `${BASE_URL}/${link.slug}`;
+function buildPreviewHTML(link, ogData, baseUrl) {
+  const rootUrl   = baseUrl || getBaseUrl();
+  const shortUrl  = `${rootUrl}/${link.slug}`;
   const goUrl     = `${shortUrl}?go=1`;
   const domain    = ogData?.domain || (() => { try { return new URL(link.original_url).hostname; } catch { return link.original_url; } })();
   const title     = escapeHtml(ogData?.title || domain);
@@ -587,7 +597,8 @@ app.post('/api/shorten', requireAuth, async (req, res) => {
       if (og) await db.run('UPDATE links SET og_data = ? WHERE id = ?', [JSON.stringify(og), info.lastInsertRowid]);
     }).catch(() => {});
 
-    res.status(201).json({ ...newLink, short_url: `${BASE_URL}/${newLink.slug}` });
+    const baseUrl = getBaseUrl(req);
+    res.status(201).json({ ...newLink, short_url: `${baseUrl}/${newLink.slug}` });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: 'Erro interno ao criar o link.' });
@@ -600,7 +611,8 @@ app.get('/api/links', requireAuth, async (req, res) => {
   const links = (user.id === 0)
     ? await db.all('SELECT * FROM links ORDER BY created_at DESC')
     : await db.all('SELECT * FROM links WHERE user_id = ? ORDER BY created_at DESC', [user.id]);
-  res.json(links.map(l => ({ ...l, short_url: `${BASE_URL}/${l.slug}` })));
+  const baseUrl = getBaseUrl(req);
+  res.json(links.map(l => ({ ...l, short_url: `${baseUrl}/${l.slug}` })));
 });
 
 // ─── API: Export CSV ─────────────────────────────────────────────────────────
@@ -619,11 +631,12 @@ app.get('/api/links/export/csv', requireAuth, async (req, res) => {
     ? await db.all('SELECT * FROM links ORDER BY created_at DESC')
     : await db.all('SELECT * FROM links WHERE user_id = ? ORDER BY created_at DESC', [user.id]);
 
+  const baseUrl = getBaseUrl(req);
   const headers = ['ID', 'Slug', 'URL Curta', 'URL Original', 'Cliques', 'Limite Cliques', 'Expira Em', 'Criado Em'];
   const rows = links.map(l => [
     l.id,
     `"${(l.slug || '').replace(/"/g, '""')}"`,
-    `"${BASE_URL}/${(l.slug || '').replace(/"/g, '""')}"`,
+    `"${baseUrl}/${(l.slug || '').replace(/"/g, '""')}"`,
     `"${(l.original_url || '').replace(/"/g, '""')}"`,
     l.clicks || 0,
     l.max_clicks != null ? l.max_clicks : '',
@@ -673,7 +686,8 @@ app.get('/api/links/:id/analytics', requireAuth, async (req, res) => {
     return { date, clicks: map[date] || 0 };
   });
 
-  res.json({ link: { ...link, short_url: `${BASE_URL}/${link.slug}` }, daily, total: link.clicks });
+  const baseUrl = getBaseUrl(req);
+  res.json({ link: { ...link, short_url: `${baseUrl}/${link.slug}` }, daily, total: link.clicks });
 });
 
 // ─── API: QR Code ─────────────────────────────────────────────────────────────
@@ -685,7 +699,8 @@ app.get('/api/links/:id/qr', requireAuth, async (req, res) => {
 
   if (!link) return res.status(404).json({ error: 'Link não encontrado.' });
   try {
-    const shortUrl = `${BASE_URL}/${link.slug}`;
+    const baseUrl = getBaseUrl(req);
+    const shortUrl = `${baseUrl}/${link.slug}`;
     const qr = await QRCode.toDataURL(shortUrl, { width: 280, margin: 2, color: { dark: '#7c3aed', light: '#ffffff' } });
     res.json({ qr, short_url: shortUrl });
   } catch (err) { console.error(err); res.status(500).json({ error: 'Erro ao gerar QR Code.' }); }
@@ -736,7 +751,8 @@ app.get('/:slug', async (req, res) => {
     }).catch(() => {});
   }
 
-  res.send(buildPreviewHTML(link, ogData));
+  const baseUrl = getBaseUrl(req);
+  res.send(buildPreviewHTML(link, ogData, baseUrl));
 });
 
 // ─── Start (se rodar standalone) ──────────────────────────────────────────────

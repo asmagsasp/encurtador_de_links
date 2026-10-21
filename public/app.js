@@ -28,6 +28,8 @@ async function checkAuth() {
 
 const originalUrlInput = document.getElementById('original-url');
 const customSlugInput  = document.getElementById('custom-slug');
+const slugPrefix       = document.getElementById('slug-prefix');
+if (slugPrefix) slugPrefix.textContent = window.location.host + '/';
 const clearUrlBtn      = document.getElementById('clear-url');
 const shortenBtn       = document.getElementById('shorten-btn');
 const btnText          = shortenBtn.querySelector('.btn-text');
