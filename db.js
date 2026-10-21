@@ -96,6 +96,17 @@ const db = {
     if (!defaultPlan) {
       await db.run('INSERT INTO settings (key, value) VALUES (?, ?)', ['current_plan', 'free']);
     }
+
+    // Garante que o admin exista na tabela users com plano master
+    const adminUser = (process.env.ADMIN_USER || 'admin').trim();
+    const adminPass = (process.env.ADMIN_PASS || 'admin123').trim();
+    const existingAdmin = await db.get('SELECT id FROM users WHERE LOWER(username) = ?', [adminUser.toLowerCase()]);
+    if (!existingAdmin) {
+      const crypto = require('crypto');
+      const salt = crypto.randomBytes(16).toString('hex');
+      const hash = crypto.pbkdf2Sync(adminPass, salt, 1000, 64, 'sha512').toString('hex');
+      await db.run('INSERT INTO users (username, password_hash, plan) VALUES (?, ?, ?)', [adminUser, `${salt}:${hash}`, 'master']);
+    }
   }
 };
 

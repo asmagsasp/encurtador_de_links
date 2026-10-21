@@ -146,13 +146,18 @@ async function getCurrentPlan() {
 }
 
 // ─── Middleware ───────────────────────────────────────────────────────────────
+app.set('trust proxy', 1);
 app.use(cors());
 app.use(express.json());
 app.use(session({
   secret: SESSION_SECRET,
-  resave: false,
+  resave: true,
   saveUninitialized: false,
-  cookie: { maxAge: 24 * 60 * 60 * 1000 },
+  cookie: {
+    maxAge: 7 * 24 * 60 * 60 * 1000,
+    sameSite: 'lax',
+    secure: false,
+  },
 }));
 
 // Inicialização automática do schema (compatível com Serverless Vercel)
@@ -188,18 +193,21 @@ app.post('/auth/register', async (req, res) => {
     return res.status(400).json({ error: 'Preencha usuário e senha.' });
   }
 
-  const cleanUser = username.trim();
+  const cleanUser = String(username).trim();
+  const cleanPass = String(password).trim();
+
   if (cleanUser.length < 3 || cleanUser.length > 30) {
     return res.status(400).json({ error: 'O nome de usuário deve ter entre 3 e 30 caracteres.' });
   }
   if (!/^[a-zA-Z0-9_.-]+$/.test(cleanUser)) {
     return res.status(400).json({ error: 'Use apenas letras, números, ponto, hífen ou sublinhado no usuário.' });
   }
-  if (password.length < 4) {
+  if (cleanPass.length < 4) {
     return res.status(400).json({ error: 'A senha deve ter no mínimo 4 caracteres.' });
   }
 
-  if (cleanUser.toLowerCase() === ADMIN_USER.toLowerCase()) {
+  const envAdmin = (ADMIN_USER || 'admin').trim().toLowerCase();
+  if (cleanUser.toLowerCase() === envAdmin) {
     return res.status(409).json({ error: 'Esse nome de usuário já está reservado.' });
   }
 
@@ -209,11 +217,15 @@ app.post('/auth/register', async (req, res) => {
   }
 
   try {
-    const passwordHash = hashPassword(password);
+    const passwordHash = hashPassword(cleanPass);
     const info = await db.run('INSERT INTO users (username, password_hash, plan) VALUES (?, ?, ?)', [cleanUser, passwordHash, 'free']);
     const newUser = { id: info.lastInsertRowid, username: cleanUser, plan: 'free' };
+    
     req.session.user = newUser;
-    res.status(201).json({ success: true, username: cleanUser, message: 'Conta criada com sucesso!' });
+    req.session.save(err => {
+      if (err) return res.status(500).json({ error: 'Erro ao iniciar sessão.' });
+      res.status(201).json({ success: true, username: cleanUser, message: 'Conta criada com sucesso!' });
+    });
   } catch (err) {
     console.error('Erro ao registrar:', err);
     res.status(500).json({ error: 'Erro interno ao registrar usuário.' });
@@ -224,25 +236,41 @@ app.post('/auth/login', async (req, res) => {
   const { username, password } = req.body;
   if (!username || !password) return res.status(400).json({ error: 'Preencha usuário e senha.' });
 
-  const cleanUser = username.trim();
+  const cleanUser = String(username).trim();
+  const cleanPass = String(password).trim();
 
-  // 1. Verifica se é o admin padrão (.env)
-  if (cleanUser === ADMIN_USER && password === ADMIN_PASS) {
-    req.session.user = { id: 0, username: ADMIN_USER, isAdmin: true, plan: 'master' };
-    return res.json({ success: true, username: ADMIN_USER });
+  const envAdminUser = (ADMIN_USER || 'admin').trim();
+  const envAdminPass = (ADMIN_PASS || 'admin123').trim();
+
+  // 1. Verifica se é o admin padrão (.env) — case-insensitive no nome do usuário
+  if (cleanUser.toLowerCase() === envAdminUser.toLowerCase() && cleanPass === envAdminPass) {
+    req.session.user = { id: 0, username: envAdminUser, isAdmin: true, plan: 'master' };
+    return req.session.save(err => {
+      if (err) return res.status(500).json({ error: 'Erro ao salvar sessão.' });
+      return res.json({ success: true, username: envAdminUser });
+    });
   }
 
-  // 2. Verifica se é um usuário cadastrado
+  // 2. Verifica se é um usuário cadastrado no banco
   const user = await db.get('SELECT * FROM users WHERE LOWER(username) = ?', [cleanUser.toLowerCase()]);
-  if (!user || !verifyPassword(password, user.password_hash)) {
+  if (!user || !verifyPassword(cleanPass, user.password_hash)) {
     return res.status(401).json({ error: 'Usuário ou senha incorretos.' });
   }
 
   req.session.user = { id: user.id, username: user.username, plan: user.plan || 'free' };
-  res.json({ success: true, username: user.username });
+  req.session.save(err => {
+    if (err) return res.status(500).json({ error: 'Erro ao salvar sessão.' });
+    res.json({ success: true, username: user.username });
+  });
 });
 
-app.post('/auth/logout', (req, res) => req.session.destroy(() => res.json({ success: true })));
+app.post('/auth/logout', (req, res) => {
+  req.session.destroy(() => {
+    res.clearCookie('connect.sid');
+    res.json({ success: true });
+  });
+});
+
 app.get('/auth/me', (req, res) => {
   if (req.session?.user) return res.json({ user: req.session.user });
   res.status(401).json({ error: 'Não autenticado.' });
