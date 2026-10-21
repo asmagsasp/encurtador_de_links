@@ -1,6 +1,5 @@
 require('dotenv').config();
 const express  = require('express');
-const Database = require('better-sqlite3');
 const path     = require('path');
 const cors     = require('cors');
 const session  = require('express-session');
@@ -8,62 +7,16 @@ const QRCode   = require('qrcode');
 const https    = require('https');
 const http     = require('http');
 const crypto   = require('crypto');
+const db       = require('./db');
 
 const app = express();
-const PORT         = process.env.PORT    || 5000;
-const BASE_URL     = process.env.BASE_URL || `http://localhost:${PORT}`;
-const ADMIN_USER   = process.env.ADMIN_USER || 'admin';
-const ADMIN_PASS   = process.env.ADMIN_PASS || 'admin123';
+const PORT           = process.env.PORT || 5000;
+const BASE_URL       = process.env.BASE_URL || `http://localhost:${PORT}`;
+const ADMIN_USER     = process.env.ADMIN_USER || 'admin';
+const ADMIN_PASS     = process.env.ADMIN_PASS || 'admin123';
 const SESSION_SECRET = process.env.SESSION_SECRET || 'linkcurto-secret';
 
-const RESERVED_SLUGS = new Set(['api', 'auth', 'login', 'logout', 'admin', 'static', 'public', 'sw.js', 'manifest.json']);
-
-// ─── Database ────────────────────────────────────────────────────────────────
-const db = new Database(path.join(__dirname, 'links.db'));
-
-db.exec(`
-  CREATE TABLE IF NOT EXISTS links (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    original_url TEXT NOT NULL,
-    slug TEXT NOT NULL UNIQUE,
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    clicks INTEGER DEFAULT 0,
-    expires_at DATETIME DEFAULT NULL,
-    max_clicks INTEGER DEFAULT NULL,
-    og_data TEXT DEFAULT NULL
-  );
-  CREATE TABLE IF NOT EXISTS clicks_log (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    link_id INTEGER NOT NULL,
-    clicked_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (link_id) REFERENCES links(id) ON DELETE CASCADE
-  );
-  CREATE TABLE IF NOT EXISTS settings (
-    key TEXT PRIMARY KEY,
-    value TEXT
-  );
-  CREATE TABLE IF NOT EXISTS users (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    username TEXT NOT NULL UNIQUE,
-    password_hash TEXT NOT NULL,
-    plan TEXT DEFAULT 'free',
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-  );
-`);
-
-// Migrations para DBs antigos
-[
-  'expires_at DATETIME DEFAULT NULL',
-  'max_clicks INTEGER DEFAULT NULL',
-  'og_data TEXT DEFAULT NULL',
-  'user_id INTEGER DEFAULT NULL',
-].forEach(col => { try { db.exec(`ALTER TABLE links ADD COLUMN ${col}`); } catch {} });
-
-// Inicializa plano padrão se não existir (Free para testes das restrições)
-const defaultPlanRow = db.prepare('SELECT value FROM settings WHERE key = ?').get('current_plan');
-if (!defaultPlanRow) {
-  db.prepare('INSERT INTO settings (key, value) VALUES (?, ?)').run('current_plan', 'free');
-}
+const RESERVED_SLUGS = new Set(['api', 'auth', 'login', 'logout', 'admin', 'static', 'public', 'sw.js', 'manifest.json', 'favicon.ico']);
 
 // ─── Planos de Acesso ─────────────────────────────────────────────────────────
 const PLANS = {
@@ -163,31 +116,31 @@ function verifyPassword(password, stored) {
   return hash === originalHash;
 }
 
-function getUserPlan(user) {
+async function getUserPlan(user) {
   if (!user) return PLANS.free;
   if (!user.id) {
-    const row = db.prepare('SELECT value FROM settings WHERE key = ?').get('current_plan');
+    const row = await db.get('SELECT value FROM settings WHERE key = ?', ['current_plan']);
     const planId = row ? row.value : 'free';
     return PLANS[planId] || PLANS.free;
   }
-  const dbUser = db.prepare('SELECT plan FROM users WHERE id = ?').get(user.id);
+  const dbUser = await db.get('SELECT plan FROM users WHERE id = ?', [user.id]);
   const planId = dbUser?.plan || user.plan || 'free';
   return PLANS[planId] || PLANS.free;
 }
 
-function setUserPlan(user, planId) {
+async function setUserPlan(user, planId) {
   if (!PLANS[planId]) throw new Error('Plano inválido.');
   if (!user.id) {
-    db.prepare('INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)').run('current_plan', planId);
+    await db.run('INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)', ['current_plan', planId]);
   } else {
-    db.prepare('UPDATE users SET plan = ? WHERE id = ?').run(planId, user.id);
+    await db.run('UPDATE users SET plan = ? WHERE id = ?', [planId, user.id]);
     user.plan = planId;
   }
   return PLANS[planId];
 }
 
-function getCurrentPlan() {
-  const row = db.prepare('SELECT value FROM settings WHERE key = ?').get('current_plan');
+async function getCurrentPlan() {
+  const row = await db.get('SELECT value FROM settings WHERE key = ?', ['current_plan']);
   const planId = row ? row.value : 'free';
   return PLANS[planId] || PLANS.free;
 }
@@ -202,13 +155,34 @@ app.use(session({
   cookie: { maxAge: 24 * 60 * 60 * 1000 },
 }));
 
-// ─── Auth ────────────────────────────────────────────────────────────────────
+// Inicialização automática do schema (compatível com Serverless Vercel)
+let schemaReady = false;
+let schemaInitPromise = null;
+async function ensureSchema() {
+  if (schemaReady) return;
+  if (!schemaInitPromise) {
+    schemaInitPromise = db.initSchema().then(() => { schemaReady = true; });
+  }
+  return schemaInitPromise;
+}
+
+app.use(async (req, res, next) => {
+  try {
+    await ensureSchema();
+    next();
+  } catch (err) {
+    console.error('Erro na inicialização do DB:', err);
+    res.status(500).json({ error: 'Erro de conexão com o banco de dados.' });
+  }
+});
+
+// ─── Auth Middleware ──────────────────────────────────────────────────────────
 function requireAuth(req, res, next) {
   if (req.session?.user) return next();
   res.status(401).json({ error: 'Não autorizado. Faça login.' });
 }
 
-app.post('/auth/register', (req, res) => {
+app.post('/auth/register', async (req, res) => {
   const { username, password } = req.body;
   if (!username || !password) {
     return res.status(400).json({ error: 'Preencha usuário e senha.' });
@@ -229,15 +203,14 @@ app.post('/auth/register', (req, res) => {
     return res.status(409).json({ error: 'Esse nome de usuário já está reservado.' });
   }
 
-  const existing = db.prepare('SELECT id FROM users WHERE LOWER(username) = ?').get(cleanUser.toLowerCase());
+  const existing = await db.get('SELECT id FROM users WHERE LOWER(username) = ?', [cleanUser.toLowerCase()]);
   if (existing) {
     return res.status(409).json({ error: 'Esse usuário já existe. Faça login ou escolha outro nome.' });
   }
 
   try {
     const passwordHash = hashPassword(password);
-    const info = db.prepare('INSERT INTO users (username, password_hash, plan) VALUES (?, ?, ?)')
-      .run(cleanUser, passwordHash, 'free');
+    const info = await db.run('INSERT INTO users (username, password_hash, plan) VALUES (?, ?, ?)', [cleanUser, passwordHash, 'free']);
     const newUser = { id: info.lastInsertRowid, username: cleanUser, plan: 'free' };
     req.session.user = newUser;
     res.status(201).json({ success: true, username: cleanUser, message: 'Conta criada com sucesso!' });
@@ -247,7 +220,7 @@ app.post('/auth/register', (req, res) => {
   }
 });
 
-app.post('/auth/login', (req, res) => {
+app.post('/auth/login', async (req, res) => {
   const { username, password } = req.body;
   if (!username || !password) return res.status(400).json({ error: 'Preencha usuário e senha.' });
 
@@ -260,7 +233,7 @@ app.post('/auth/login', (req, res) => {
   }
 
   // 2. Verifica se é um usuário cadastrado
-  const user = db.prepare('SELECT * FROM users WHERE LOWER(username) = ?').get(cleanUser.toLowerCase());
+  const user = await db.get('SELECT * FROM users WHERE LOWER(username) = ?', [cleanUser.toLowerCase()]);
   if (!user || !verifyPassword(password, user.password_hash)) {
     return res.status(401).json({ error: 'Usuário ou senha incorretos.' });
   }
@@ -276,12 +249,13 @@ app.get('/auth/me', (req, res) => {
 });
 
 // ─── Plan API ─────────────────────────────────────────────────────────────────
-app.get('/api/plan', requireAuth, (req, res) => {
+app.get('/api/plan', requireAuth, async (req, res) => {
   const user = req.session.user;
-  const currentPlan = getUserPlan(user);
-  const linkCount = (user.id === 0)
-    ? db.prepare('SELECT COUNT(*) as count FROM links').get().count
-    : db.prepare('SELECT COUNT(*) as count FROM links WHERE user_id = ?').get(user.id).count;
+  const currentPlan = await getUserPlan(user);
+  const countRow = (user.id === 0)
+    ? await db.get('SELECT COUNT(*) as count FROM links')
+    : await db.get('SELECT COUNT(*) as count FROM links WHERE user_id = ?', [user.id]);
+  const linkCount = countRow?.count || 0;
 
   res.json({
     currentPlan,
@@ -295,16 +269,17 @@ app.get('/api/plan', requireAuth, (req, res) => {
   });
 });
 
-app.post('/api/plan/upgrade', requireAuth, (req, res) => {
+app.post('/api/plan/upgrade', requireAuth, async (req, res) => {
   const { plan } = req.body;
   if (!plan || !PLANS[plan]) {
     return res.status(400).json({ error: 'Plano inválido. Escolha entre free, pro ou master.' });
   }
   const user = req.session.user;
-  const newPlan = setUserPlan(user, plan);
-  const linkCount = (user.id === 0)
-    ? db.prepare('SELECT COUNT(*) as count FROM links').get().count
-    : db.prepare('SELECT COUNT(*) as count FROM links WHERE user_id = ?').get(user.id).count;
+  const newPlan = await setUserPlan(user, plan);
+  const countRow = (user.id === 0)
+    ? await db.get('SELECT COUNT(*) as count FROM links')
+    : await db.get('SELECT COUNT(*) as count FROM links WHERE user_id = ?', [user.id]);
+  const linkCount = countRow?.count || 0;
 
   res.json({
     success: true,
@@ -323,7 +298,7 @@ app.post('/api/plan/upgrade', requireAuth, (req, res) => {
 app.use(express.static(path.join(__dirname, 'public'), {
   etag: false,
   maxAge: 0,
-  setHeaders: (res, path) => {
+  setHeaders: (res) => {
     res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
     res.setHeader('Pragma', 'no-cache');
     res.setHeader('Expires', '0');
@@ -348,69 +323,78 @@ function isExpired(link) {
 }
 
 function escapeHtml(str) {
-  return String(str ?? '')
-    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+  if (!str) return '';
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;');
 }
 
-// ─── OG Scraping ─────────────────────────────────────────────────────────────
-function parseOG(html, url) {
-  const get = (...props) => {
-    for (const prop of props) {
-      const m = html.match(new RegExp(`<meta[^>]+(?:property|name)=["']${prop}["'][^>]+content=["']([^"']{1,500})["']`, 'i'))
-             || html.match(new RegExp(`<meta[^>]+content=["']([^"']{1,500})["'][^>]+(?:property|name)=["']${prop}["']`, 'i'));
-      if (m?.[1]?.trim()) return m[1].trim();
-    }
-    return null;
-  };
-  const titleTag = html.match(/<title[^>]*>([^<]{1,200})<\/title>/i)?.[1]?.trim();
-  const domain = (() => { try { return new URL(url).hostname; } catch { return url; } })();
-  return {
-    title:       get('og:title', 'twitter:title')       || titleTag || domain,
-    description: get('og:description', 'twitter:description', 'description'),
-    image:       get('og:image', 'twitter:image:src', 'twitter:image'),
-    domain,
-  };
-}
-
-function fetchOGData(url, depth = 0) {
-  if (depth > 2) return Promise.resolve(null);
+function fetchOGData(targetUrl) {
   return new Promise(resolve => {
-    const timer = setTimeout(() => resolve(null), 5000);
     try {
-      const urlObj  = new URL(url);
-      const mod     = urlObj.protocol === 'https:' ? https : http;
-      let   html    = '';
-      const req = mod.get(url, {
-        headers: { 'User-Agent': 'Mozilla/5.0 (compatible; LinkCurto/1.0)', Accept: 'text/html' },
+      const u = new URL(targetUrl);
+      const mod = u.protocol === 'https:' ? https : http;
+      const timer = setTimeout(() => resolve(null), 4000);
+
+      const req = mod.get(targetUrl, {
+        headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 LinkCurtoBot/1.0' }
       }, res => {
         if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
           clearTimeout(timer);
-          const next = res.headers.location.startsWith('http')
-            ? res.headers.location
-            : `${urlObj.protocol}//${urlObj.host}${res.headers.location}`;
-          resolve(fetchOGData(next, depth + 1));
-          return;
+          try {
+            const redirectUrl = new URL(res.headers.location, targetUrl).toString();
+            return resolve(fetchOGData(redirectUrl));
+          } catch { return resolve(null); }
         }
+
+        const contentType = res.headers['content-type'] || '';
+        if (!contentType.includes('text/html')) { clearTimeout(timer); return resolve(null); }
+
+        let html = '';
         res.setEncoding('utf8');
-        res.on('data', chunk => { html += chunk; if (html.length > 120000) req.destroy(); });
-        res.on('end',  ()    => { clearTimeout(timer); resolve(parseOG(html, url)); });
-        res.on('error', ()   => { clearTimeout(timer); resolve(null); });
+        res.on('data', chunk => {
+          html += chunk;
+          if (html.length > 60000) res.destroy();
+        });
+
+        res.on('end', () => {
+          clearTimeout(timer);
+          const getMeta = prop => {
+            const m = html.match(new RegExp(`<meta[^>]+(?:property|name)=["'](?:og:)?${prop}["'][^>]+content=["']([^"']+)["']`, 'i'))
+                   || html.match(new RegExp(`<meta[^>]+content=["']([^"']+)["'][^>]+(?:property|name)=["'](?:og:)?${prop}["']`, 'i'));
+            return m ? m[1].trim() : null;
+          };
+
+          const titleTag = html.match(/<title[^>]*>([^<]+)<\/title>/i);
+          const title = getMeta('title') || (titleTag ? titleTag[1].trim() : u.hostname);
+          const description = getMeta('description');
+          let image = getMeta('image');
+          if (image && !image.startsWith('http')) {
+            try { image = new URL(image, targetUrl).toString(); } catch { image = null; }
+          }
+
+          resolve({ title, description, image, domain: u.hostname });
+        });
+
+        res.on('error', () => { clearTimeout(timer); resolve(null); });
       });
-      req.on('error',   ()   => { clearTimeout(timer); resolve(null); });
-      req.setTimeout(4500,  () => req.destroy());
-    } catch { clearTimeout(timer); resolve(null); }
+
+      req.on('error', () => { clearTimeout(timer); resolve(null); });
+      req.setTimeout(4500, () => req.destroy());
+    } catch { resolve(null); }
   });
 }
 
-// ─── Preview Page Builder ─────────────────────────────────────────────────────
 function buildPreviewHTML(link, ogData) {
   const shortUrl  = `${BASE_URL}/${link.slug}`;
   const goUrl     = `${shortUrl}?go=1`;
   const domain    = ogData?.domain || (() => { try { return new URL(link.original_url).hostname; } catch { return link.original_url; } })();
-  const title     = escapeHtml(ogData?.title       || domain);
+  const title     = escapeHtml(ogData?.title || domain);
   const desc      = escapeHtml(ogData?.description || '');
-  const ogImage   = escapeHtml(ogData?.image       || '');
+  const ogImage   = escapeHtml(ogData?.image || '');
   const favicon   = `https://www.google.com/s2/favicons?domain=${encodeURIComponent(domain)}&sz=64`;
   const linkDataJSON = JSON.stringify({ goUrl, linkId: link.id, domain });
 
@@ -505,16 +489,17 @@ function buildPreviewHTML(link, ogData) {
 }
 
 // ─── API: Shorten ─────────────────────────────────────────────────────────────
-app.post('/api/shorten', requireAuth, (req, res) => {
+app.post('/api/shorten', requireAuth, async (req, res) => {
   const { original_url, custom_slug, expires_at, max_clicks } = req.body;
   if (!original_url) return res.status(400).json({ error: 'URL é obrigatória.' });
   if (!isValidUrl(original_url)) return res.status(400).json({ error: 'URL inválida. Use http:// ou https://' });
 
   const user = req.session.user;
-  const plan = getUserPlan(user);
-  const currentCount = (user.id === 0)
-    ? db.prepare('SELECT COUNT(*) as count FROM links').get().count
-    : db.prepare('SELECT COUNT(*) as count FROM links WHERE user_id = ?').get(user.id).count;
+  const plan = await getUserPlan(user);
+  const countRow = (user.id === 0)
+    ? await db.get('SELECT COUNT(*) as count FROM links')
+    : await db.get('SELECT COUNT(*) as count FROM links WHERE user_id = ?', [user.id]);
+  const currentCount = countRow?.count || 0;
 
   // 1. Limite de links ativos pelo plano
   if (plan.maxLinks !== Infinity && currentCount >= plan.maxLinks) {
@@ -553,8 +538,8 @@ app.post('/api/shorten', requireAuth, (req, res) => {
     if (RESERVED_SLUGS.has(slug.toLowerCase())) return res.status(400).json({ error: 'Esse slug é reservado pelo sistema.' });
   }
 
-  if (db.prepare('SELECT id FROM links WHERE slug = ?').get(slug))
-    return res.status(409).json({ error: 'Esse slug já está em uso. Escolha outro.' });
+  const existingSlug = await db.get('SELECT id FROM links WHERE slug = ?', [slug]);
+  if (existingSlug) return res.status(409).json({ error: 'Esse slug já está em uso. Escolha outro.' });
 
   // Teto de cliques conforme o plano se não especificado
   let effectiveMaxClicks = max_clicks ? parseInt(max_clicks) : null;
@@ -563,13 +548,15 @@ app.post('/api/shorten', requireAuth, (req, res) => {
   }
 
   try {
-    const info = db.prepare('INSERT INTO links (original_url, slug, expires_at, max_clicks, user_id) VALUES (?, ?, ?, ?, ?)')
-      .run(original_url, slug, expires_at || null, effectiveMaxClicks, user.id || null);
-    const newLink = db.prepare('SELECT * FROM links WHERE id = ?').get(info.lastInsertRowid);
+    const info = await db.run(
+      'INSERT INTO links (original_url, slug, expires_at, max_clicks, user_id) VALUES (?, ?, ?, ?, ?)',
+      [original_url, slug, expires_at || null, effectiveMaxClicks, user.id || null]
+    );
+    const newLink = await db.get('SELECT * FROM links WHERE id = ?', [info.lastInsertRowid]);
 
     // Pre-fetch OG data in background (non-blocking)
-    fetchOGData(original_url).then(og => {
-      if (og) db.prepare('UPDATE links SET og_data = ? WHERE id = ?').run(JSON.stringify(og), info.lastInsertRowid);
+    fetchOGData(original_url).then(async og => {
+      if (og) await db.run('UPDATE links SET og_data = ? WHERE id = ?', [JSON.stringify(og), info.lastInsertRowid]);
     }).catch(() => {});
 
     res.status(201).json({ ...newLink, short_url: `${BASE_URL}/${newLink.slug}` });
@@ -580,18 +567,18 @@ app.post('/api/shorten', requireAuth, (req, res) => {
 });
 
 // ─── API: List links ──────────────────────────────────────────────────────────
-app.get('/api/links', requireAuth, (req, res) => {
+app.get('/api/links', requireAuth, async (req, res) => {
   const user = req.session.user;
   const links = (user.id === 0)
-    ? db.prepare('SELECT * FROM links ORDER BY created_at DESC').all()
-    : db.prepare('SELECT * FROM links WHERE user_id = ? ORDER BY created_at DESC').all(user.id);
+    ? await db.all('SELECT * FROM links ORDER BY created_at DESC')
+    : await db.all('SELECT * FROM links WHERE user_id = ? ORDER BY created_at DESC', [user.id]);
   res.json(links.map(l => ({ ...l, short_url: `${BASE_URL}/${l.slug}` })));
 });
 
 // ─── API: Export CSV ─────────────────────────────────────────────────────────
-app.get('/api/links/export/csv', requireAuth, (req, res) => {
+app.get('/api/links/export/csv', requireAuth, async (req, res) => {
   const user = req.session.user;
-  const plan = getUserPlan(user);
+  const plan = await getUserPlan(user);
   if (!plan.exportCsv) {
     return res.status(403).json({
       error: 'A exportação para CSV está disponível a partir do Plano Pro (R$ 9,90).',
@@ -601,8 +588,8 @@ app.get('/api/links/export/csv', requireAuth, (req, res) => {
   }
 
   const links = (user.id === 0)
-    ? db.prepare('SELECT * FROM links ORDER BY created_at DESC').all()
-    : db.prepare('SELECT * FROM links WHERE user_id = ? ORDER BY created_at DESC').all(user.id);
+    ? await db.all('SELECT * FROM links ORDER BY created_at DESC')
+    : await db.all('SELECT * FROM links WHERE user_id = ? ORDER BY created_at DESC', [user.id]);
 
   const headers = ['ID', 'Slug', 'URL Curta', 'URL Original', 'Cliques', 'Limite Cliques', 'Expira Em', 'Criado Em'];
   const rows = links.map(l => [
@@ -621,28 +608,35 @@ app.get('/api/links/export/csv', requireAuth, (req, res) => {
   res.send(csv);
 });
 
+// ─── API: Export CSV (alias) ──────────────────────────────────────────────────
+app.get('/api/export/csv', requireAuth, (req, res) => res.redirect(307, '/api/links/export/csv'));
+
 // ─── API: Delete link ─────────────────────────────────────────────────────────
-app.delete('/api/links/:id', requireAuth, (req, res) => {
+app.delete('/api/links/:id', requireAuth, async (req, res) => {
   const user = req.session.user;
   const link = (user.id === 0)
-    ? db.prepare('SELECT id FROM links WHERE id = ?').get(req.params.id)
-    : db.prepare('SELECT id FROM links WHERE id = ? AND user_id = ?').get(req.params.id, user.id);
+    ? await db.get('SELECT id FROM links WHERE id = ?', [req.params.id])
+    : await db.get('SELECT id FROM links WHERE id = ? AND user_id = ?', [req.params.id, user.id]);
 
   if (!link) return res.status(404).json({ error: 'Link não encontrado.' });
-  db.prepare('DELETE FROM links WHERE id = ?').run(req.params.id);
+  await db.run('DELETE FROM links WHERE id = ?', [req.params.id]);
   res.json({ message: 'Link excluído com sucesso.' });
 });
 
 // ─── API: Analytics ───────────────────────────────────────────────────────────
-app.get('/api/links/:id/analytics', requireAuth, (req, res) => {
-  const link = db.prepare('SELECT * FROM links WHERE id = ?').get(req.params.id);
+app.get('/api/links/:id/analytics', requireAuth, async (req, res) => {
+  const user = req.session.user;
+  const link = (user.id === 0)
+    ? await db.get('SELECT * FROM links WHERE id = ?', [req.params.id])
+    : await db.get('SELECT * FROM links WHERE id = ? AND user_id = ?', [req.params.id, user.id]);
+
   if (!link) return res.status(404).json({ error: 'Link não encontrado.' });
 
-  const rows = db.prepare(`
+  const rows = await db.all(`
     SELECT DATE(clicked_at) as date, COUNT(*) as clicks
     FROM clicks_log WHERE link_id = ? AND clicked_at >= DATE('now', '-29 days')
     GROUP BY DATE(clicked_at) ORDER BY date ASC
-  `).all(req.params.id);
+  `, [req.params.id]);
 
   const map = Object.fromEntries(rows.map(r => [r.date, r.clicks]));
   const daily = Array.from({ length: 30 }, (_, i) => {
@@ -656,7 +650,11 @@ app.get('/api/links/:id/analytics', requireAuth, (req, res) => {
 
 // ─── API: QR Code ─────────────────────────────────────────────────────────────
 app.get('/api/links/:id/qr', requireAuth, async (req, res) => {
-  const link = db.prepare('SELECT * FROM links WHERE id = ?').get(req.params.id);
+  const user = req.session.user;
+  const link = (user.id === 0)
+    ? await db.get('SELECT * FROM links WHERE id = ?', [req.params.id])
+    : await db.get('SELECT * FROM links WHERE id = ? AND user_id = ?', [req.params.id, user.id]);
+
   if (!link) return res.status(404).json({ error: 'Link não encontrado.' });
   try {
     const shortUrl = `${BASE_URL}/${link.slug}`;
@@ -665,12 +663,9 @@ app.get('/api/links/:id/qr', requireAuth, async (req, res) => {
   } catch (err) { console.error(err); res.status(500).json({ error: 'Erro ao gerar QR Code.' }); }
 });
 
-// ─── API: Export CSV (alias) ──────────────────────────────────────────────────
-app.get('/api/export/csv', requireAuth, (req, res) => res.redirect(307, '/api/links/export/csv'));
-
 // ─── Public: OG preview data (no auth) ───────────────────────────────────────
 app.get('/api/preview/:id', async (req, res) => {
-  const link = db.prepare('SELECT id, original_url, og_data FROM links WHERE id = ?').get(req.params.id);
+  const link = await db.get('SELECT id, original_url, og_data FROM links WHERE id = ?', [req.params.id]);
   if (!link) return res.status(404).json({ error: 'Link não encontrado.' });
 
   if (link.og_data) {
@@ -679,7 +674,7 @@ app.get('/api/preview/:id', async (req, res) => {
 
   const og = await fetchOGData(link.original_url);
   if (og) {
-    db.prepare('UPDATE links SET og_data = ? WHERE id = ?').run(JSON.stringify(og), link.id);
+    await db.run('UPDATE links SET og_data = ? WHERE id = ?', [JSON.stringify(og), link.id]);
   }
   const domain = (() => { try { return new URL(link.original_url).hostname; } catch { return link.original_url; } })();
   res.json(og || { title: domain, description: null, image: null, domain });
@@ -687,16 +682,16 @@ app.get('/api/preview/:id', async (req, res) => {
 
 // ─── Redirect + Preview ───────────────────────────────────────────────────────
 app.get('/:slug', async (req, res) => {
-  const link = db.prepare('SELECT * FROM links WHERE slug = ?').get(req.params.slug);
+  const link = await db.get('SELECT * FROM links WHERE slug = ?', [req.params.slug]);
   if (!link) return res.status(404).sendFile(path.join(__dirname, 'public', '404.html'));
   if (isExpired(link)) return res.status(410).sendFile(path.join(__dirname, 'public', '404.html'));
 
-  const plan = getCurrentPlan();
+  const plan = await getCurrentPlan();
 
   // Se for redirecionamento direto, ou se o plano não tiver página rica de preview (exclusiva do Master)
   if (req.query.go === '1' || !plan.previewPage) {
-    db.prepare('INSERT INTO clicks_log (link_id) VALUES (?)').run(link.id);
-    db.prepare('UPDATE links SET clicks = clicks + 1 WHERE id = ?').run(link.id);
+    await db.run('INSERT INTO clicks_log (link_id) VALUES (?)', [link.id]);
+    await db.run('UPDATE links SET clicks = clicks + 1 WHERE id = ?', [link.id]);
     return res.redirect(302, link.original_url);
   }
 
@@ -708,16 +703,20 @@ app.get('/:slug', async (req, res) => {
   if (!ogData) {
     const domain = (() => { try { return new URL(link.original_url).hostname; } catch { return link.original_url; } })();
     ogData = { title: domain, description: null, image: null, domain };
-    fetchOGData(link.original_url).then(og => {
-      if (og) db.prepare('UPDATE links SET og_data = ? WHERE id = ?').run(JSON.stringify(og), link.id);
+    fetchOGData(link.original_url).then(async og => {
+      if (og) await db.run('UPDATE links SET og_data = ? WHERE id = ?', [JSON.stringify(og), link.id]);
     }).catch(() => {});
   }
 
   res.send(buildPreviewHTML(link, ogData));
 });
 
-// ─── Start ────────────────────────────────────────────────────────────────────
-app.listen(PORT, () => {
-  console.log(`\n🔗 LinkCurto rodando em ${BASE_URL}`);
-  console.log(`👤 Login: ${ADMIN_USER} / ${ADMIN_PASS}\n`);
-});
+// ─── Start (se rodar standalone) ──────────────────────────────────────────────
+if (require.main === module) {
+  app.listen(PORT, () => {
+    console.log(`\n🔗 LinkCurto rodando em ${BASE_URL}`);
+    console.log(`👤 Login: ${ADMIN_USER} / ${ADMIN_PASS}\n`);
+  });
+}
+
+module.exports = app;
