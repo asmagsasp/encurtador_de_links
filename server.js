@@ -227,16 +227,32 @@ app.post('/auth/register', async (req, res) => {
 
   try {
     const passwordHash = hashPassword(cleanPass);
-    const info = await db.run('INSERT INTO users (username, password_hash, plan) VALUES (?, ?, ?)', [cleanUser, passwordHash, 'free']);
-    const newUser = { id: info.lastInsertRowid, username: cleanUser, plan: 'free' };
-    
+    await db.run('INSERT INTO users (username, password_hash, plan) VALUES (?, ?, ?)', [cleanUser, passwordHash, 'free']);
+
+    // Busca o usuário recém-criado para obter o ID real (Turso pode retornar lastInsertRowid como null)
+    const createdUser = await db.get('SELECT id, username, plan FROM users WHERE LOWER(username) = ?', [cleanUser.toLowerCase()]);
+    if (!createdUser) {
+      return res.status(500).json({ error: 'Erro ao recuperar usuário após registro.' });
+    }
+
+    const newUser = { id: createdUser.id, username: createdUser.username, plan: createdUser.plan || 'free' };
     req.session.user = newUser;
-    req.session.save(err => {
-      if (err) return res.status(500).json({ error: 'Erro ao iniciar sessão.' });
-      res.status(201).json({ success: true, username: cleanUser, message: 'Conta criada com sucesso!' });
-    });
+
+    // Tenta salvar sessão; não bloqueia em caso de falha (serverless pode não persistir memória)
+    try {
+      await new Promise((resolve, reject) => {
+        req.session.save(err => err ? reject(err) : resolve());
+      });
+    } catch (sessionErr) {
+      console.warn('Aviso: sessão não pôde ser salva após registro:', sessionErr.message);
+    }
+
+    res.status(201).json({ success: true, username: createdUser.username, message: 'Conta criada com sucesso!' });
   } catch (err) {
     console.error('Erro ao registrar:', err);
+    if (err.message?.includes('UNIQUE') || err.message?.includes('unique')) {
+      return res.status(409).json({ error: 'Esse usuário já existe. Escolha outro nome.' });
+    }
     res.status(500).json({ error: 'Erro interno ao registrar usuário.' });
   }
 });
